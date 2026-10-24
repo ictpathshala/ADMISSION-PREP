@@ -45,7 +45,7 @@ const DEFAULT_SETTINGS = {
   subscriptionEnabled: false,
   plans: [
     { id: "monthly", name: "মাসিক", price: 199, days: 30 },
-    { id: "quarterly", name: "৩ মাস", price: 499, days: 90 },
+    { id: "quarterly", name: "3 মাস", price: 499, days: 90 },
     { id: "yearly", name: "বার্ষিক", price: 1499, days: 365 },
   ],
   bkash: "01908523912",
@@ -64,8 +64,8 @@ const state = {
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const subjName = (id) => SUBJECTS.find((s) => s.id === id)?.name || id;
-const bn = (n) => String(n).replace(/\d/g, (d) => "০১২৩৪৫৬৭৮৯"[d]);
-const fmtDate = (ts) => (ts?.toDate ? ts.toDate() : ts ? new Date(ts) : null)?.toLocaleDateString("bn-BD", { year: "numeric", month: "short", day: "numeric" }) || "—";
+const bn = (n) => String(n).replace(/\d/g, (d) => "0123456789"[d]);
+const fmtDate = (ts) => (ts?.toDate ? ts.toDate() : ts ? new Date(ts) : null)?.toLocaleDateString("bn-BD-u-nu-latn", { year: "numeric", month: "short", day: "numeric" }) || "—";
 
 function toast(msg, kind = "") {
   const t = document.createElement("div");
@@ -83,7 +83,7 @@ function errMsg(e) {
   if (c.includes("popup-closed")) return "লগইন উইন্ডো বন্ধ করা হয়েছে";
   if (c.includes("invalid-credential") || c.includes("wrong-password") || c.includes("user-not-found")) return "ইমেইল বা পাসওয়ার্ড ভুল";
   if (c.includes("email-already-in-use")) return "এই ইমেইল দিয়ে আগেই অ্যাকাউন্ট আছে";
-  if (c.includes("weak-password")) return "পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের দিন";
+  if (c.includes("weak-password")) return "পাসওয়ার্ড কমপক্ষে 6 অক্ষরের দিন";
   if (c.includes("invalid-email")) return "ইমেইলটি সঠিক নয়";
   if (c.includes("permission-denied")) return "অনুমতি নেই";
   return e?.message || "কিছু একটা সমস্যা হয়েছে";
@@ -224,7 +224,7 @@ function loginView() {
       <form id="authForm">
         <div id="nameWrap" style="display:none"><label>নাম</label><input id="aName" placeholder="আপনার নাম"></div>
         <label>ইমেইল</label><input id="aEmail" type="email" required placeholder="you@example.com">
-        <label>পাসওয়ার্ড</label><input id="aPass" type="password" required minlength="6" placeholder="কমপক্ষে ৬ অক্ষর">
+        <label>পাসওয়ার্ড</label><input id="aPass" type="password" required minlength="6" placeholder="কমপক্ষে 6 অক্ষর">
         <button class="btn primary block" style="margin-top:18px" id="authBtn" data-mode="in">লগইন</button>
       </form>
       <p class="center small muted" style="margin-top:14px">
@@ -364,7 +364,7 @@ async function adminContent() {
     <form id="contentForm" data-type="${t}">
       <div class="row">
         <div><label>বিষয়</label><select id="cSubject">${SUBJECTS.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("")}</select></div>
-        <div><label>শিরোনাম</label><input id="cTitle" required placeholder="যেমন: অধ্যায় ১ — ভূমিকা"></div>
+        <div><label>শিরোনাম</label><input id="cTitle" required placeholder="যেমন: অধ্যায় 1 — ভূমিকা"></div>
       </div>
       <label>লিংক <span class="muted small">(${hint})</span></label><input id="cUrl" type="url" required placeholder="https://...">
       <label>সংক্ষিপ্ত বিবরণ (ঐচ্ছিক)</label><input id="cDesc">
