@@ -104,6 +104,8 @@ img { max-width: 100%; }
   width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; font-size: 1.5rem; font-weight: 700; margin-bottom: 14px;
   background: linear-gradient(135deg, rgba(108, 123, 255, .35), rgba(164, 112, 255, .25)); border: 1px solid var(--line);
 }
+.subj-ico svg { width: 28px; height: 28px; color: var(--gold); }
+.card.hover:hover .subj-ico { background: linear-gradient(135deg, rgba(245, 199, 106, .28), rgba(255, 159, 90, .2)); }
 .card h3 { font-size: 1.2rem; margin-bottom: 2px; }
 .card .muted, .muted { color: var(--muted); }
 .card .small { font-size: .9rem; }

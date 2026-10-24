@@ -17,15 +17,25 @@ const db = getFirestore(fbApp);
 /* ============================================================
    Constants & state
    ============================================================ */
+const svg = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICONS = {
+  bangla: svg('<path d="M4 5.5C4 4.7 4.7 4 5.5 4H11v15H5.5C4.7 19 4 18.3 4 17.5z"/><path d="M20 5.5c0-.8-.7-1.5-1.5-1.5H13v15h5.5c.8 0 1.5-.7 1.5-1.5z"/><path d="M7 8h2.5M7 11h2.5M14.5 8H17M14.5 11H17"/>'),
+  english: svg('<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.5 3.8 5.5 3.8 9s-1.3 6.5-3.8 9c-2.5-2.5-3.8-5.5-3.8-9S9.5 5.5 12 3z"/>'),
+  accounting: svg('<rect x="5" y="3" width="14" height="18" rx="2"/><rect x="8" y="6" width="8" height="3" rx=".5"/><path d="M8.5 13h.01M12 13h.01M15.5 13h.01M8.5 16.5h.01M12 16.5h.01M15.5 16.5h.01"/>'),
+  management: svg('<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/>'),
+  "business-org": svg('<path d="M4 21V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v16"/><path d="M14 10h5a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h2M8 12h2M8 16h2"/>'),
+  finance: svg('<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/><path d="M16 8h3v3"/>'),
+  "banking-insurance": svg('<path d="M3 10l9-6 9 6"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8"/><path d="M3 21h18"/>'),
+};
 const SUBJECTS = [
-  { id: "bangla", name: "বাংলা", en: "Bangla", ico: "ক" },
-  { id: "english", name: "ইংলিশ", en: "English", ico: "Aa" },
-  { id: "accounting", name: "হিসাববিজ্ঞান", en: "Accounting", ico: "৳" },
-  { id: "management", name: "ব্যবস্থাপনা", en: "Management", ico: "M" },
-  { id: "business-org", name: "ব্যবসায় সংগঠন", en: "Business Organization", ico: "B" },
-  { id: "finance", name: "ফিনান্স", en: "Finance", ico: "F" },
-  { id: "banking-insurance", name: "ব্যাংকিং ও ইন্স্যুরেন্স", en: "Banking & Insurance", ico: "৳%" },
-];
+  { id: "bangla", name: "বাংলা", en: "Bangla" },
+  { id: "english", name: "ইংলিশ", en: "English" },
+  { id: "accounting", name: "হিসাববিজ্ঞান", en: "Accounting" },
+  { id: "management", name: "ব্যবস্থাপনা", en: "Management" },
+  { id: "business-org", name: "ব্যবসায় সংগঠন", en: "Business Organization" },
+  { id: "finance", name: "ফিনান্স", en: "Finance" },
+  { id: "banking-insurance", name: "ব্যাংকিং ও ইন্স্যুরেন্স", en: "Banking & Insurance" },
+].map((s) => ({ ...s, ico: ICONS[s.id] }));
 const TYPES = [
   { id: "video", name: "ভিডিও", add: "ভিডিও" },
   { id: "slide", name: "স্লাইড", add: "স্লাইড" },
@@ -196,7 +206,7 @@ function homeView() {
     <h2>বিষয়সমূহ</h2><p class="sub">যে বিষয়টি পড়তে চান সেটি বেছে নিন</p>
     <div class="grid">${SUBJECTS.map((s) => `
       <a class="card hover" href="#/subject/${s.id}">
-        <div class="subj-ico">${esc(s.ico)}</div>
+        <div class="subj-ico">${s.ico}</div>
         <h3>${esc(s.name)}</h3><div class="muted small">${esc(s.en)}</div>
       </a>`).join("")}
     </div>
