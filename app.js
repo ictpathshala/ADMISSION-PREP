@@ -160,6 +160,7 @@ async function render() {
   }
   view.innerHTML = navView(r) + `<main class="fade">${body}</main>` + footerView();
   window.scrollTo({ top: 0 });
+  syncFx();
 }
 window.addEventListener("hashchange", render);
 
@@ -215,8 +216,9 @@ function homeView() {
 
 function loginView() {
   if (state.user) { location.hash = "#/"; return ""; }
-  return `<div class="wrap section" style="max-width:460px">
+  return `<div class="wrap section login" style="max-width:460px">
     <div class="card">
+      <div class="login-logo"><span class="logo">ভ</span></div>
       <h2 class="center" style="margin-bottom:4px">স্বাগতম 👋</h2>
       <p class="muted center" style="margin-bottom:18px">লগইন করে কনটেন্ট দেখুন</p>
       <button class="btn block" data-act="google">Google দিয়ে চালিয়ে যান</button>
@@ -565,6 +567,89 @@ document.addEventListener("submit", async (e) => {
     }
   } catch (er) { console.error(er); toast(errMsg(er), "err"); }
 });
+
+/* ============================================================
+   Login background animation (live candlestick chart + floating symbols)
+   ============================================================ */
+const fx = (() => {
+  const cv = document.createElement("canvas");
+  cv.id = "bgfx"; cv.setAttribute("aria-hidden", "true");
+  document.body.prepend(cv);
+  const ctx = cv.getContext("2d");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const CW = 12, STEP = 20, SYMS = ["৳", "%", "$", "+", "৳"];
+  let W = 0, H = 0, raf = 0, running = false, off = 0, lo = 0, hi = 1, candles = [], syms = [];
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  const nextCandle = (prev) => {
+    const o = prev ? prev.c : 100, c = o + (Math.random() - 0.44) * 4;
+    return { o, c, h: Math.max(o, c) + Math.random() * 2, l: Math.min(o, c) - Math.random() * 2 };
+  };
+  const newSym = (init) => ({ x: rnd(0, W), y: init ? rnd(0, H) : H + 20, s: rnd(14, 26), v: rnd(0.15, 0.45), a: rnd(0.06, 0.16), c: SYMS[(Math.random() * SYMS.length) | 0] });
+
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = innerWidth; H = innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    candles = [];
+    for (let i = 0, n = Math.ceil(W / STEP) + 3; i < n; i++) candles.push(nextCandle(candles[i - 1]));
+    lo = Math.min(...candles.map((c) => c.l)); hi = Math.max(...candles.map((c) => c.h));
+    syms = Array.from({ length: Math.max(8, Math.round(W / 45)) }, () => newSym(true));
+  }
+
+  function frame(t) {
+    ctx.clearRect(0, 0, W, H);
+    ctx.textAlign = "center";
+    for (const s of syms) {
+      ctx.font = `${s.s}px 'Hind Siliguri', sans-serif`;
+      ctx.fillStyle = `rgba(229,189,99,${s.a})`;
+      ctx.fillText(s.c, s.x, s.y);
+      if (!reduce) s.y -= s.v;
+      if (s.y < -30) Object.assign(s, newSym(false));
+    }
+    let mn = Infinity, mx = -Infinity;
+    for (const c of candles) { if (c.l < mn) mn = c.l; if (c.h > mx) mx = c.h; }
+    lo += (mn - lo) * 0.05; hi += (mx - hi) * 0.05;
+    const top = H * 0.42, bot = H * 0.92, y = (p) => bot - ((p - lo) / (hi - lo || 1)) * (bot - top);
+
+    ctx.lineWidth = 1;
+    for (let i = 0; i < candles.length; i++) {
+      const c = candles[i], x = i * STEP - off + CW / 2, up = c.c >= c.o;
+      ctx.strokeStyle = up ? "rgba(63,208,143,.32)" : "rgba(255,122,138,.28)";
+      ctx.fillStyle = up ? "rgba(63,208,143,.20)" : "rgba(255,122,138,.18)";
+      ctx.beginPath(); ctx.moveTo(x, y(c.h)); ctx.lineTo(x, y(c.l)); ctx.stroke();
+      const yt = y(Math.max(c.o, c.c)), hh = Math.max(2, y(Math.min(c.o, c.c)) - yt);
+      ctx.fillRect(x - CW / 2, yt, CW, hh); ctx.strokeRect(x - CW / 2, yt, CW, hh);
+    }
+
+    const avg = (i) => { let s = 0; for (let k = 0; k < 5; k++) s += candles[i - k].c; return s / 5; };
+    ctx.beginPath();
+    for (let i = 4; i < candles.length; i++) {
+      const x = i * STEP - off + CW / 2;
+      i === 4 ? ctx.moveTo(x, y(avg(i))) : ctx.lineTo(x, y(avg(i)));
+    }
+    ctx.strokeStyle = "rgba(229,189,99,.7)"; ctx.lineWidth = 2; ctx.stroke();
+
+    const di = Math.min(candles.length - 1, Math.floor((W * 0.8 + off) / STEP));
+    if (di >= 4) {
+      const dx = di * STEP - off + CW / 2, dy = y(avg(di)), pulse = 1 + Math.sin((t || 0) / 400) * 0.5;
+      ctx.fillStyle = "rgba(229,189,99,.18)"; ctx.beginPath(); ctx.arc(dx, dy, 9 * pulse, 0, 6.283); ctx.fill();
+      ctx.fillStyle = "rgba(241,214,143,.95)"; ctx.beginPath(); ctx.arc(dx, dy, 3.5, 0, 6.283); ctx.fill();
+    }
+
+    if (!reduce) {
+      off += 0.35;
+      if (off >= STEP) { off -= STEP; candles.shift(); candles.push(nextCandle(candles[candles.length - 1])); }
+    }
+    if (running && !reduce) raf = requestAnimationFrame(frame);
+  }
+  function start() { if (running) return; running = true; resize(); frame(0); }
+  function stop() { running = false; cancelAnimationFrame(raf); }
+  addEventListener("resize", () => { if (running) { resize(); if (reduce) frame(0); } });
+  return { sync(on) { document.body.classList.toggle("on-login", on); on ? start() : stop(); } };
+})();
+const syncFx = () => fx.sync(route()[0] === "login");
 
 /* ============================================================
    Boot
