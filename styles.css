@@ -217,3 +217,9 @@ body.on-login #bgfx { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* ---------- Books ---------- */
+.book-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.book { padding: 14px; }
+.book-cover { display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 12px; border: 1px solid var(--line); background: var(--card-hover); }
+.book-cover.ph { display: grid; place-items: center; font-size: 3rem; font-weight: 700; color: var(--gold); background: linear-gradient(160deg, rgba(229, 189, 99, .14), rgba(255, 255, 255, .03)); }
