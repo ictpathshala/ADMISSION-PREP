@@ -37,8 +37,6 @@ const SUBJECTS = [
   { id: "banking-insurance", name: "ব্যাংকিং ও ইন্স্যুরেন্স", en: "Banking & Insurance" },
 ].map((s) => ({ ...s, ico: ICONS[s.id] }));
 const TYPES = [
-  { id: "video", name: "ভিডিও", add: "ভিডিও" },
-  { id: "slide", name: "স্লাইড", add: "স্লাইড" },
   { id: "pdf", name: "PDF", add: "PDF" },
 ];
 const DEFAULT_SETTINGS = {
@@ -55,7 +53,7 @@ const DEFAULT_SETTINGS = {
 const state = {
   user: null, isAdmin: false, settings: { ...DEFAULT_SETTINGS }, sub: null,
   content: null, books: null, purchases: {}, chapters: [], adminBook: null,
-  adminTab: "overview", subjTab: {}, adminType: "video",
+  adminTab: "overview", subjTab: {}, adminType: "pdf",
 };
 
 /* ============================================================
@@ -209,16 +207,15 @@ function homeView() {
   <section class="wrap hero">
     <span class="pill">ভর্তি পরীক্ষার স্মার্ট প্রস্তুতি</span>
     <h1>সেরা প্রস্তুতি, <span class="grad">এক জায়গায়</span></h1>
-    <p>ভিডিও ক্লাস, স্লাইড আর PDF নোট — বাংলা, ইংলিশ, হিসাববিজ্ঞান, ব্যবস্থাপনা, ফিনান্স সহ সব বিষয়ে গোছানো কনটেন্ট।</p>
+    <p>অধ্যায় অনুযায়ী PDF নোট ও বই — বাংলা, ইংলিশ, হিসাববিজ্ঞান, ব্যবস্থাপনা, ফিনান্স সহ সব বিষয়ে গোছানো কনটেন্ট।</p>
     <div class="cta">
       <a class="btn primary" href="${state.user ? "#/subject/bangla" : "#/login"}">${state.user ? "পড়া শুরু করুন" : "ফ্রিতে শুরু করুন"}</a>
       <a class="btn" href="#/pricing">${subOn ? "প্ল্যান দেখুন" : "বিস্তারিত"}</a>
     </div>
     <div class="stats">
       <div class="stat"><b>${bn(SUBJECTS.length)}টি</b><span>বিষয়</span></div>
-      <div class="stat"><b>ভিডিও</b><span>রেকর্ডেড ক্লাস</span></div>
-      <div class="stat"><b>স্লাইড</b><span>সহজ উপস্থাপনা</span></div>
-      <div class="stat"><b>PDF</b><span>নোট ও প্রশ্নব্যাংক</span></div>
+      <div class="stat"><b>PDF</b><span>অধ্যায় অনুযায়ী নোট</span></div>
+      <div class="stat"><b>বই</b><span>চ্যাপ্টার ভিত্তিক</span></div>
     </div>
   </section>
   <section class="wrap section">
@@ -258,7 +255,7 @@ async function subjectView(id) {
   const s = SUBJECTS.find((x) => x.id === id);
   if (!s) return `<div class="wrap section"><div class="empty">বিষয় পাওয়া যায়নি</div></div>`;
   if (!state.user) return gate("এই বিষয়ের কনটেন্ট দেখতে লগইন করুন");
-  const tab = state.subjTab[id] || "video";
+  const tab = state.subjTab[id] || "pdf";
   const tabs = [...TYPES, { id: "book", name: "বই" }];
   let inner;
   if (tab === "book") inner = await bookListView(id);
@@ -360,7 +357,7 @@ async function pricingView() {
     return `<div class="wrap section"><div class="card center" style="max-width:560px;margin:50px auto">
       <div style="font-size:2.4rem">🎁</div>
       <h2 style="margin:8px 0">এখন সব কনটেন্ট ফ্রি!</h2>
-      <p class="muted">বর্তমানে কোনো সাবস্ক্রিপশন লাগছে না। লগইন করে সব ভিডিও, স্লাইড ও PDF দেখুন।</p>
+      <p class="muted">বর্তমানে কোনো সাবস্ক্রিপশন লাগছে না। লগইন করে সব PDF নোট ও বই পড়ুন।</p>
       <a class="btn primary" href="${state.user ? "#/subject/bangla" : "#/login"}" style="margin-top:16px">পড়া শুরু করুন</a>
     </div></div>`;
   }
@@ -427,8 +424,6 @@ async function adminOverview() {
     <div class="stat"><b>${bn(users.size)}</b><span>মোট ইউজার</span></div>
     <div class="stat"><b>${bn(pend)}</b><span>অপেক্ষমাণ পেমেন্ট</span></div>
     <div class="stat"><b>৳${bn(rev)}</b><span>মোট আয়</span></div>
-    <div class="stat"><b>${bn(cnt("video"))}</b><span>ভিডিও</span></div>
-    <div class="stat"><b>${bn(cnt("slide"))}</b><span>স্লাইড</span></div>
     <div class="stat"><b>${bn(cnt("pdf"))}</b><span>PDF</span></div>
     <div class="stat"><b>${bn(books.length)}</b><span>বই</span></div>
   </div>
@@ -451,13 +446,13 @@ async function adminContent() {
   const t = state.adminType;
   const list = all.filter((c) => c.type === t);
   const tn = TYPES.find((x) => x.id === t);
-  const hint = { video: "YouTube (Unlisted) লিংক বা Google Drive ভিডিও লিংক", slide: "Google Slides বা Drive লিংক (Anyone with link → Viewer)", pdf: "Google Drive PDF লিংক (Anyone with link → Viewer)" }[t];
+  const hint = "Google Drive PDF লিংক (Anyone with link → Viewer)";
   return `<div class="tabs">${TYPES.map((x) => `<button class="${t === x.id ? "on" : ""}" data-act="adminType" data-type="${x.id}">${x.name}</button>`).join("")}</div>
   <div class="card" style="margin-bottom:18px"><h3>নতুন ${tn.add} যোগ করুন</h3>
     <form id="contentForm" data-type="${t}">
       <div class="row">
         <div><label>বিষয়</label><select id="cSubject">${SUBJECTS.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("")}</select></div>
-        <div><label>শিরোনাম</label><input id="cTitle" required placeholder="যেমন: অধ্যায় 1 — ভূমিকা"></div>
+        <div><label>শিরোনাম</label><input id="cTitle" required placeholder="যেমন: অধ্যায় 1 — ভূমিকা (PDF)"></div>
       </div>
       <label>লিংক <span class="muted small">(${hint})</span></label><input id="cUrl" type="url" required placeholder="https://...">
       <label>সংক্ষিপ্ত বিবরণ (ঐচ্ছিক)</label><input id="cDesc">
