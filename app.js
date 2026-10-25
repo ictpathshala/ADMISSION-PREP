@@ -52,7 +52,7 @@ const DEFAULT_SETTINGS = {
 
 const state = {
   user: null, isAdmin: false, settings: { ...DEFAULT_SETTINGS }, sub: null,
-  content: null, books: null, purchases: {}, chapters: [], adminBook: null,
+  content: null, books: null, purchases: {}, chapters: [], adminBook: null, adminSubj: "bangla",
   adminTab: "overview", subjTab: {}, adminType: "pdf",
 };
 
@@ -149,7 +149,7 @@ async function loadPurchases() {
     return Object.fromEntries(snap.docs.map((d) => [d.data().bookId, { expiresAt: d.data().expiresAt, title: d.data().bookTitle }]));
   } catch { return {}; }
 }
-const bookExp = (b) => state.purchases[b.id]?.expiresAt;
+const bookExp = (b) => [state.purchases[b.id]?.expiresAt, state.purchases.all?.expiresAt].filter(Boolean).sort((x, y) => y.toMillis() - x.toMillis())[0];
 const bookAccess = (b) => state.isAdmin || !(b.price > 0) || (bookExp(b)?.toMillis() > Date.now());
 
 /* ============================================================
@@ -165,7 +165,6 @@ async function render() {
     if (!r) body = homeView();
     else if (r === "login") body = loginView();
     else if (r === "subject") body = await subjectView(p);
-    else if (r === "book") body = await bookView(p);
     else if (r === "pricing") body = await pricingView();
     else if (r === "account") body = await accountView();
     else if (r === "admin") body = await adminView();
@@ -190,7 +189,7 @@ function navView(r) {
     <a href="#/" class="brand"><span class="logo">ভ</span>${esc(APP_NAME)}</a>
     <nav class="links">
       ${a("", "হোম").replace('href="#/"', 'href="#/"')}
-      ${a("pricing", "প্ল্যান")}
+      ${a("pricing", "দাম")}
       ${u ? a("account", "আমার অ্যাকাউন্ট") : ""}
       ${state.isAdmin ? a("admin", "অ্যাডমিন") : ""}
       ${u ? `<button class="link" data-act="logout">লগআউট</button>${u.photoURL ? `<img class="avatar" src="${esc(u.photoURL)}" alt="">` : ""}`
@@ -207,7 +206,7 @@ function homeView() {
   <section class="wrap hero">
     <span class="pill">ভর্তি পরীক্ষার স্মার্ট প্রস্তুতি</span>
     <h1>সেরা প্রস্তুতি, <span class="grad">এক জায়গায়</span></h1>
-    <p>অধ্যায় অনুযায়ী PDF নোট ও বই — বাংলা, ইংলিশ, হিসাববিজ্ঞান, ব্যবস্থাপনা, ফিনান্স সহ সব বিষয়ে গোছানো কনটেন্ট।</p>
+    <p>অধ্যায় অনুযায়ী PDF নোট — বাংলা, ইংলিশ, হিসাববিজ্ঞান, ব্যবস্থাপনা, ফিনান্স সহ সব বিষয়ে গোছানো কনটেন্ট।</p>
     <div class="cta">
       <a class="btn primary" href="${state.user ? "#/subject/bangla" : "#/login"}">${state.user ? "পড়া শুরু করুন" : "ফ্রিতে শুরু করুন"}</a>
       <a class="btn" href="#/pricing">${subOn ? "প্ল্যান দেখুন" : "বিস্তারিত"}</a>
@@ -215,7 +214,7 @@ function homeView() {
     <div class="stats">
       <div class="stat"><b>${bn(SUBJECTS.length)}টি</b><span>বিষয়</span></div>
       <div class="stat"><b>PDF</b><span>অধ্যায় অনুযায়ী নোট</span></div>
-      <div class="stat"><b>বই</b><span>চ্যাপ্টার ভিত্তিক</span></div>
+      <div class="stat"><b>ফ্রি</b><span>প্রতি বিষয়ে প্রথম চ্যাপ্টার</span></div>
     </div>
   </section>
   <section class="wrap section">
@@ -254,46 +253,26 @@ function loginView() {
 async function subjectView(id) {
   const s = SUBJECTS.find((x) => x.id === id);
   if (!s) return `<div class="wrap section"><div class="empty">বিষয় পাওয়া যায়নি</div></div>`;
-  if (!state.user) return gate("এই বিষয়ের কনটেন্ট দেখতে লগইন করুন");
-  const tab = state.subjTab[id] || "pdf";
-  const tabs = [...TYPES, { id: "book", name: "বই" }];
-  let inner;
-  if (tab === "book") inner = await bookListView(id);
-  else {
-    const all = await loadContent();
-    const items = all.filter((c) => c.subject === id && c.type === tab);
-    inner = items.length ? `<div class="grid">${items.map(contentCard).join("")}</div>` : `<div class="empty">এই বিভাগে এখনো কিছু যোগ করা হয়নি</div>`;
-  }
-  return `<div class="wrap section">
-    <a href="#/" class="muted small">← সব বিষয়</a>
-    <h2 style="margin-top:8px">${esc(s.name)} <span class="muted" style="font-size:1rem">${esc(s.en)}</span></h2>
-    <div class="tabs">${tabs.map((t) => `<button class="${tab === t.id ? "on" : ""}" data-act="subjTab" data-subj="${id}" data-type="${t.id}">${t.name}</button>`).join("")}</div>
-    ${inner}
-  </div>`;
-}
-async function bookListView(id) {
-  const [all, pays] = await Promise.all([loadBooks(), getDocs(query(collection(db, "payments"), where("uid", "==", state.user.uid)))]);
-  const pending = new Set(pays.docs.map((d) => d.data()).filter((p) => p.kind === "book" && p.status === "pending").map((p) => p.bookId));
-  const items = all.filter((b) => b.subject === id);
-  return items.length ? `<div class="grid book-grid">${items.map((b) => bookCard(b, pending.has(b.id))).join("")}</div>`
-    : `<div class="empty">এই বিষয়ের বই এখনো যোগ করা হয়নি</div>`;
-}
-function bookCard(b, pending) {
-  const has = bookAccess(b), free = !(b.price > 0);
-  const badge = free ? `<span class="badge free">ফ্রি</span>`
+  if (!state.user) return gate("এই বিষয়ের PDF দেখতে লগইন করুন");
+  const [books, chs, pays] = await Promise.all([loadBooks(), loadChapters(id), getDocs(query(collection(db, "payments"), where("uid", "==", state.user.uid)))]);
+  const b = books.find((x) => x.id === id), bun = books.find((x) => x.id === "all");
+  const head = `<a href="#/" class="muted small">← সব বিষয়</a>
+    <h2 style="margin-top:8px">${esc(s.name)} <span class="muted" style="font-size:1rem">${esc(s.en)}</span></h2>`;
+  if (!b || !chs.length) return `<div class="wrap section">${head}<div class="empty" style="margin-top:16px">এই বিষয়ের PDF শীঘ্রই যোগ করা হবে</div></div>`;
+  const pending = pays.docs.some((d) => { const p = d.data(); return p.kind === "book" && (p.bookId === id || p.bookId === "all") && p.status === "pending"; });
+  const has = bookAccess(b), paid = b.price > 0;
+  const buy = !paid ? `<span class="badge free">সব চ্যাপ্টার ফ্রি</span>`
     : state.isAdmin ? `<span class="badge lock">৳${bn(b.price)} · ${bn(b.days)} দিন</span>`
-    : has ? `<span class="badge free">কেনা · ${fmtDate(bookExp(b))} পর্যন্ত</span>`
-    : pending ? `<span class="badge pending">যাচাই চলছে</span>`
-    : `<span class="badge lock">৳${bn(b.price)} · ${bn(b.days)} দিন</span>`;
-  const act = "goBook";
-  return `<div class="card hover book" data-act="${act}" data-id="${b.id}" style="cursor:pointer">
-    ${b.cover ? `<img class="book-cover" src="${esc(b.cover)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<div class="book-cover ph"><span>${esc((b.title || "ব")[0])}</span></div>`}
-    <div style="margin:12px 0 8px">${badge}</div>
-    <h3 style="font-size:1.05rem">${esc(b.title)}</h3>
-    ${b.author ? `<div class="muted small">${esc(b.author)}</div>` : ""}
-    ${b.desc ? `<p class="muted small" style="margin-top:6px">${esc(b.desc)}</p>` : ""}
-    <button class="btn ${has ? "" : "primary"} sm block" style="margin-top:12px">${has ? "পড়ুন" : "চ্যাপ্টার দেখুন"}</button>
-  </div>`
+    : has ? `<span class="badge free">আনলকড · ${fmtDate(bookExp(b))} পর্যন্ত</span>`
+    : pending ? `<span class="badge pending">পেমেন্ট যাচাই চলছে</span>`
+    : `<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" data-act="buyBook" data-id="${b.id}">এই বিষয় কিনুন ৳${bn(b.price)} · ${bn(b.days)} দিন</button>${bun && bun.price > 0 ? `<button class="btn" data-act="buyBook" data-id="all">সব বিষয় একসাথে ৳${bn(bun.price)} · ${bn(bun.days)} দিন</button>` : ""}</div>`;
+  return `<div class="wrap section">${head}
+    <div class="card" style="margin:14px 0 20px">
+      ${paid && !has ? `<p class="muted small" style="margin-bottom:10px">প্রথম চ্যাপ্টার ফ্রি। বাকি চ্যাপ্টারগুলো পড়তে এই বিষয়টি কিনুন।</p>` : ""}
+      ${buy}
+    </div>
+    ${chs.map((c) => chapterRow(c, b)).join("")}
+  </div>`;
 }
 function contentCard(c) {
   const ok = canAccess(c);
@@ -324,55 +303,20 @@ function chapterRow(c, b) {
     <span class="ch-no">${c.no ?? ""}</span><span class="ch-title">${esc(c.title)}</span>
     <span class="badge ${ok ? "free" : "lock"}">${c.free ? "ফ্রি" : ok ? "আনলকড" : "🔒 লক"}</span></div>`;
 }
-async function bookView(id) {
-  if (!state.user) return gate("বই দেখতে লগইন করুন");
-  const [books, chs, pays] = await Promise.all([loadBooks(), loadChapters(id), getDocs(query(collection(db, "payments"), where("uid", "==", state.user.uid)))]);
-  const b = books.find((x) => x.id === id);
-  if (!b) return `<div class="wrap section"><div class="empty">বই পাওয়া যায়নি</div></div>`;
-  const pending = pays.docs.some((d) => { const p = d.data(); return p.kind === "book" && p.bookId === id && p.status === "pending"; });
-  const has = bookAccess(b), paid = b.price > 0;
-  const buy = !paid ? `<span class="badge free">ফ্রি বই</span>`
-    : state.isAdmin ? `<span class="badge lock">৳${bn(b.price)} · ${bn(b.days)} দিন</span>`
-    : has ? `<span class="badge free">আনলকড · ${fmtDate(bookExp(b))} পর্যন্ত</span>`
-    : pending ? `<span class="badge pending">পেমেন্ট যাচাই চলছে</span>`
-    : `<button class="btn primary" data-act="buyBook" data-id="${b.id}">৳${bn(b.price)} দিয়ে ${bn(b.days)} দিনের জন্য কিনুন</button>`;
-  return `<div class="wrap section">
-    <a href="#/subject/${esc(b.subject)}" class="muted small">← ${esc(subjName(b.subject))}</a>
-    <div class="card book-head" style="margin-top:10px">
-      ${b.cover ? `<img class="book-cover" src="${esc(b.cover)}" alt="" referrerpolicy="no-referrer">` : `<div class="book-cover ph"><span>${esc((b.title || "ব")[0])}</span></div>`}
-      <div style="flex:1;min-width:200px"><h2>${esc(b.title)}</h2>
-        ${b.author ? `<div class="muted">${esc(b.author)}</div>` : ""}
-        ${b.desc ? `<p class="muted small" style="margin-top:8px">${esc(b.desc)}</p>` : ""}
-        ${paid && !has ? `<p class="muted small" style="margin-top:8px">প্রথম চ্যাপ্টার ফ্রি। বাকিগুলো পড়তে বইটি কিনুন।</p>` : ""}
-        <div style="margin-top:14px">${buy}</div></div>
-    </div>
-    <h3 style="margin:24px 0 12px">চ্যাপ্টারসমূহ</h3>
-    ${chs.length ? chs.map((c) => chapterRow(c, b)).join("") : `<div class="empty">এই বইয়ে এখনো চ্যাপ্টার যোগ করা হয়নি</div>`}
-  </div>`;
-}
-
 async function pricingView() {
-  const s = state.settings;
-  if (!s.subscriptionEnabled) {
-    return `<div class="wrap section"><div class="card center" style="max-width:560px;margin:50px auto">
-      <div style="font-size:2.4rem">🎁</div>
-      <h2 style="margin:8px 0">এখন সব কনটেন্ট ফ্রি!</h2>
-      <p class="muted">বর্তমানে কোনো সাবস্ক্রিপশন লাগছে না। লগইন করে সব PDF নোট ও বই পড়ুন।</p>
-      <a class="btn primary" href="${state.user ? "#/subject/bangla" : "#/login"}" style="margin-top:16px">পড়া শুরু করুন</a>
-    </div></div>`;
-  }
-  const active = subActive();
+  let books = [];
+  try { books = await loadBooks(); } catch {}
+  const bun = books.find((x) => x.id === "all");
   return `<div class="wrap section">
-    <h2 class="center">আপনার প্ল্যান বেছে নিন</h2>
-    <p class="sub center">পেমেন্ট করে TrxID জমা দিন — অ্যাডমিন যাচাই করে অ্যাকাউন্ট চালু করবেন</p>
-    ${active ? `<div class="card center" style="margin-bottom:18px"><span class="badge approved">সক্রিয়</span> আপনার সাবস্ক্রিপশন চালু আছে — মেয়াদ: ${fmtDate(state.sub.expiresAt)}</div>` : ""}
-    <div class="grid">${s.plans.map((p) => `
-      <div class="card hover center">
-        <h3>${esc(p.name)}</h3>
-        <div class="price" style="margin:10px 0">৳${bn(p.price)}<small> / ${bn(p.days)} দিন</small></div>
-        <button class="btn primary block" data-act="buyPlan" data-id="${esc(p.id)}">এই প্ল্যান নিন</button>
-      </div>`).join("")}
-    </div></div>`;
+    <h2 class="center">বিষয় অনুযায়ী PDF</h2>
+    <p class="sub center">প্রতিটি বিষয়ের প্রথম চ্যাপ্টার ফ্রি। পুরো বিষয় কিনলে নির্দিষ্ট মেয়াদ পর্যন্ত সব চ্যাপ্টার পড়তে পারবেন।</p>
+    ${bun && bun.price > 0 ? `<div class="card center" style="max-width:520px;margin:0 auto 22px;border-color:rgba(229,189,99,.5)"><h3>সব বিষয় একসাথে</h3><div class="price" style="margin:8px 0">৳${bn(bun.price)}<small> / ${bn(bun.days)} দিন</small></div><p class="muted small">সব বিষয়ের সব চ্যাপ্টার খুলে যাবে</p><button class="btn primary" data-act="buyBook" data-id="all" style="margin-top:12px">সব বিষয় কিনুন</button></div>` : ""}
+    <div class="grid">${SUBJECTS.map((s) => {
+      const b = books.find((x) => x.id === s.id);
+      return `<a class="card hover center" href="#/subject/${s.id}"><h3>${esc(s.name)}</h3>
+        <div class="price" style="margin:10px 0">${b ? (b.price > 0 ? "৳" + bn(b.price) : "ফ্রি") : "—"}<small>${b && b.price > 0 ? " / " + bn(b.days) + " দিন" : ""}</small></div>
+        <span class="btn sm">দেখুন</span></a>`;
+    }).join("")}</div></div>`;
 }
 
 async function accountView() {
@@ -381,14 +325,11 @@ async function accountView() {
   const snap = await getDocs(query(collection(db, "payments"), where("uid", "==", u.uid)));
   const pays = snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
   const mine = Object.entries(state.purchases).filter(([, v]) => v.expiresAt?.toMillis() > Date.now());
-  const myBooksHtml = mine.length ? `<h2 style="margin:28px 0 12px">আমার বই</h2><div class="table-wrap"><table><thead><tr><th>বই</th><th>মেয়াদ</th></tr></thead><tbody>${mine.map(([bid, v]) => `<tr><td><a href="#/book/${esc(bid)}" style="color:var(--gold)">${esc(v.title)}</a></td><td>${fmtDate(v.expiresAt)} পর্যন্ত</td></tr>`).join("")}</tbody></table></div>` : "";
+  const myBooksHtml = mine.length ? `<h2 style="margin:28px 0 12px">আমার কেনা বিষয়</h2><div class="table-wrap"><table><thead><tr><th>বিষয়</th><th>মেয়াদ</th></tr></thead><tbody>${mine.map(([bid, v]) => `<tr><td><a href="${bid === "all" ? "#/pricing" : "#/subject/" + esc(bid)}" style="color:var(--gold)">${esc(v.title)}</a></td><td>${fmtDate(v.expiresAt)} পর্যন্ত</td></tr>`).join("")}</tbody></table></div>` : "";
   return `<div class="wrap section">
     <div class="card" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
       ${u.photoURL ? `<img class="avatar" style="width:60px;height:60px" src="${esc(u.photoURL)}" alt="">` : `<div class="logo" style="width:60px;height:60px">${esc((u.displayName || u.email)[0].toUpperCase())}</div>`}
       <div style="flex:1"><h3>${esc(u.displayName || "ব্যবহারকারী")}</h3><div class="muted">${esc(u.email)}</div></div>
-      <div>${state.settings.subscriptionEnabled
-        ? (subActive() ? `<span class="badge approved">সক্রিয় · ${fmtDate(state.sub.expiresAt)} পর্যন্ত</span>` : `<span class="badge lock">সাবস্ক্রিপশন নেই</span>`)
-        : `<span class="badge free">সব ফ্রি</span>`}</div>
     </div>
     ${myBooksHtml}
     <h2 style="margin:28px 0 12px">আমার পেমেন্ট</h2>
@@ -403,12 +344,11 @@ async function accountView() {
 async function adminView() {
   if (!state.isAdmin) return gate("শুধু অ্যাডমিনের জন্য — Google দিয়ে অ্যাডমিন Gmail-এ লগইন করুন");
   const tab = state.adminTab;
-  const tabs = [["overview", "ওভারভিউ"], ["payments", "পেমেন্ট"], ["content", "কনটেন্ট"], ["books", "বই"], ["settings", "সাবস্ক্রিপশন ও সেটিংস"], ["users", "ইউজার"]];
+  const tabs = [["overview", "ওভারভিউ"], ["payments", "পেমেন্ট"], ["pdf", "PDF ও চ্যাপ্টার"], ["settings", "সাবস্ক্রিপশন ও সেটিংস"], ["users", "ইউজার"]];
   let inner = "";
   if (tab === "overview") inner = await adminOverview();
   if (tab === "payments") inner = await adminPayments();
-  if (tab === "content") inner = await adminContent();
-  if (tab === "books") inner = await adminBooks();
+  if (tab === "pdf") inner = await adminPdf();
   if (tab === "settings") inner = adminSettings();
   if (tab === "users") inner = await adminUsers();
   return `<div class="wrap section"><h2>অ্যাডমিন ড্যাশবোর্ড</h2>
@@ -416,16 +356,14 @@ async function adminView() {
     ${inner}</div>`;
 }
 async function adminOverview() {
-  const [users, pays, content, books] = await Promise.all([getDocs(collection(db, "users")), getDocs(collection(db, "payments")), loadContent(true), loadBooks(true)]);
+  const [users, pays, chs, books] = await Promise.all([getDocs(collection(db, "users")), getDocs(collection(db, "payments")), getDocs(collection(db, "chapters")), loadBooks(true)]);
   const pend = pays.docs.filter((d) => d.data().status === "pending").length;
   const rev = pays.docs.filter((d) => d.data().status === "approved").reduce((a, d) => a + (d.data().amount || 0), 0);
-  const cnt = (t) => content.filter((c) => c.type === t).length;
   return `<div class="stats" style="margin-top:0">
     <div class="stat"><b>${bn(users.size)}</b><span>মোট ইউজার</span></div>
     <div class="stat"><b>${bn(pend)}</b><span>অপেক্ষমাণ পেমেন্ট</span></div>
     <div class="stat"><b>৳${bn(rev)}</b><span>মোট আয়</span></div>
-    <div class="stat"><b>${bn(cnt("pdf"))}</b><span>PDF</span></div>
-    <div class="stat"><b>${bn(books.length)}</b><span>বই</span></div>
+    <div class="stat"><b>${bn(chs.size)}</b><span>PDF চ্যাপ্টার</span></div>
   </div>
   <div class="card" style="margin-top:14px"><b>সাবস্ক্রিপশন:</b> ${state.settings.subscriptionEnabled ? '<span class="badge approved">চালু</span>' : '<span class="badge free">বন্ধ (সব ফ্রি)</span>'}
   <span class="muted small"> — "সাবস্ক্রিপশন ও সেটিংস" ট্যাব থেকে পরিবর্তন করুন।</span></div>`;
@@ -464,47 +402,37 @@ async function adminContent() {
       <td style="white-space:nowrap"><button class="btn sm" data-act="toggleFree" data-id="${c.id}">${c.free ? "প্রিমিয়াম করুন" : "ফ্রি করুন"}</button> <button class="btn bad sm" data-act="delContent" data-id="${c.id}">মুছুন</button></td></tr>`).join("")}
     </tbody></table></div>` : `<div class="empty">কোনো ${tn.name} নেই</div>`}`;
 }
-async function adminBooks() {
-  const all = await loadBooks(true);
-  if (state.adminBook) {
-    const bk = all.find((x) => x.id === state.adminBook);
-    if (bk) return await adminChapters(bk);
-    state.adminBook = null;
-  }
-  return `<div class="card" style="margin-bottom:18px"><h3>নতুন বই যোগ করুন</h3>
-    <p class="muted small" style="margin:4px 0 8px">আগে বইটি তৈরি করুন (দাম আর মেয়াদ সহ), তারপর তালিকা থেকে "চ্যাপ্টার" বাটনে চেপে চ্যাপ্টার যোগ করুন। প্রথম চ্যাপ্টার ফ্রি রাখলে বাকিগুলো কিনলে তবেই খুলবে। দাম ৳0 দিলে পুরো বই ফ্রি হবে।</p>
-    <form id="bookForm">
-      <div class="row"><div><label>বিষয়</label><select id="bSubject">${SUBJECTS.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("")}</select></div>
-        <div><label>বইয়ের নাম</label><input id="bTitle" required></div></div>
-      <div class="row"><div><label>লেখক (ঐচ্ছিক)</label><input id="bAuthor"></div>
-        <div><label>কভার ছবির লিংক (ঐচ্ছিক)</label><input id="bCover" type="url" placeholder="https://..."></div></div>
-      <label>সংক্ষিপ্ত বিবরণ (ঐচ্ছিক)</label><input id="bDesc">
-      <div class="row" style="align-items:end"><div><label>পুরো বইয়ের দাম (৳)</label><input id="bPrice" type="number" min="0" required value="100"></div>
-        <div><label>পড়ার মেয়াদ (দিন)</label><input id="bDays" type="number" min="1" max="3650" required value="365"></div>
-        <div><button class="btn primary block">বই তৈরি করুন</button></div></div>
-    </form></div>
-  ${all.length ? `<div class="table-wrap"><table><thead><tr><th>বিষয়</th><th>বই</th><th>দাম</th><th>মেয়াদ</th><th></th></tr></thead><tbody>
-    ${all.map((b) => `<tr><td>${esc(subjName(b.subject))}</td><td>${esc(b.title)}</td><td>${b.price > 0 ? "৳" + bn(b.price) : "ফ্রি"}</td><td>${bn(b.days)} দিন</td>
-      <td style="white-space:nowrap"><button class="btn ok sm" data-act="manageBook" data-id="${b.id}">চ্যাপ্টার</button> <button class="btn sm" data-act="editBook" data-id="${b.id}">দাম/মেয়াদ</button> <button class="btn bad sm" data-act="delBook" data-id="${b.id}">মুছুন</button></td></tr>`).join("")}
-    </tbody></table></div>` : `<div class="empty">কোনো বই নেই</div>`}`;
-}
-async function adminChapters(b) {
-  const chs = await loadChapters(b.id);
+const admChips = (id) => `<div class="tabs">${[...SUBJECTS, { id: "all", name: "সব বিষয় (বান্ডেল)" }].map((s) => `<button class="${id === s.id ? "on" : ""}" data-act="admSubj" data-id="${s.id}">${esc(s.name)}</button>`).join("")}</div>`;
+async function adminPdf() {
+  const id = state.adminSubj, name = subjName(id);
+  const [books, chs] = await Promise.all([loadBooks(true), loadChapters(id)]);
+  const b = books.find((x) => x.id === id);
+  if (id === "all") return `${admChips(id)}<div class="card"><h3>সব বিষয় একসাথে (বান্ডেল)</h3>
+    <p class="muted small" style="margin:4px 0 8px">এই দামে কিনলে ছাত্র সব বিষয়ের সব চ্যাপ্টার মেয়াদ পর্যন্ত পড়তে পারবে। দাম 0 দিলে বান্ডেল অপশন দেখাবে না।</p>
+    <div class="row" style="align-items:end"><div><label>দাম (৳)</label><input id="sPrice" type="number" min="0" value="${b ? b.price : 500}"></div>
+      <div><label>মেয়াদ (দিন)</label><input id="sDays" type="number" min="1" max="3650" value="${b ? b.days : 365}"></div>
+      <div><button class="btn primary block" data-act="saveSubj">সেভ করুন</button></div></div></div>`;
   const next = chs.length ? Math.max(...chs.map((c) => c.no || 0)) + 1 : 1;
-  return `<button class="btn sm" data-act="backBooks" style="margin-bottom:14px">← বইয়ের তালিকা</button>
-  <div class="card" style="margin-bottom:18px"><h3>${esc(b.title)} — নতুন চ্যাপ্টার</h3>
-    <p class="muted small" style="margin:4px 0 8px">চ্যাপ্টারের PDF Google Drive-এ আপলোড করে (Anyone with the link → Viewer) লিংক দিন।</p>
-    <form id="chapterForm" data-book="${b.id}">
+  return `${admChips(id)}
+  <div class="card" style="margin-bottom:18px"><h3>${esc(name)} — দাম ও মেয়াদ</h3>
+    <p class="muted small" style="margin:4px 0 8px">এই বিষয়ের সব চ্যাপ্টার কিনতে ছাত্রকে কত টাকা দিতে হবে আর কত দিন পড়তে পারবে। দাম 0 দিলে সব ফ্রি।</p>
+    <div class="row" style="align-items:end"><div><label>দাম (৳)</label><input id="sPrice" type="number" min="0" value="${b ? b.price : 100}"></div>
+      <div><label>মেয়াদ (দিন)</label><input id="sDays" type="number" min="1" max="3650" value="${b ? b.days : 365}"></div>
+      <div><button class="btn primary block" data-act="saveSubj">সেভ করুন</button></div></div>
+  </div>
+  <div class="card" style="margin-bottom:18px"><h3>${esc(name)} — নতুন চ্যাপ্টার (PDF)</h3>
+    <p class="muted small" style="margin:4px 0 8px">PDF আগে Google Drive-এ আপলোড করুন (Share → Anyone with the link → Viewer), তারপর লিংক এখানে দিন।</p>
+    <form id="chapterForm" data-book="${id}">
       <div class="row"><div style="flex:0 0 110px;min-width:110px"><label>ক্রম নং</label><input id="chNo" type="number" min="1" required value="${next}"></div>
         <div><label>চ্যাপ্টারের নাম</label><input id="chTitle" required placeholder="যেমন: ব্যাংকের ধারণা"></div></div>
-      <label>ফাইল লিংক (Drive PDF)</label><input id="chUrl" type="url" required placeholder="https://drive.google.com/...">
+      <label>PDF লিংক (Google Drive)</label><input id="chUrl" type="url" required placeholder="https://drive.google.com/...">
       <div class="row" style="align-items:end"><div class="switch" style="padding-top:12px"><input type="checkbox" id="chFree" ${next === 1 ? "checked" : ""}><span>ফ্রি চ্যাপ্টার (কেনা ছাড়াই পড়া যাবে)</span></div>
         <div><button class="btn primary block">যোগ করুন</button></div></div>
     </form></div>
   ${chs.length ? `<div class="table-wrap"><table><thead><tr><th>ক্রম</th><th>চ্যাপ্টার</th><th>ফ্রি</th><th></th></tr></thead><tbody>
     ${chs.map((c) => `<tr><td>${c.no ?? ""}</td><td>${esc(c.title)}</td><td>${c.free ? "✔" : "—"}</td>
       <td style="white-space:nowrap"><button class="btn sm" data-act="chToggleFree" data-id="${c.id}">${c.free ? "লক করুন" : "ফ্রি করুন"}</button> <button class="btn sm" data-act="chNo" data-id="${c.id}">ক্রম</button> <button class="btn bad sm" data-act="chDel" data-id="${c.id}">মুছুন</button></td></tr>`).join("")}
-    </tbody></table></div>` : `<div class="empty">এই বইয়ে এখনো চ্যাপ্টার নেই</div>`}`;
+    </tbody></table></div>` : `<div class="empty">এই বিষয়ে এখনো কোনো চ্যাপ্টার নেই</div>`}`;
 }
 function adminSettings() {
   const s = state.settings;
@@ -631,16 +559,23 @@ const actions = {
     await setDoc(doc(db, "payments", el.dataset.id), { status: "rejected", reviewedAt: serverTimestamp() }, { merge: true });
     toast("বাতিল করা হয়েছে"); render();
   },
+  admSubj(e, el) { state.adminSubj = el.dataset.id; render(); },
+  async saveSubj() {
+    const id = state.adminSubj;
+    await setDoc(doc(db, "books", id), { subject: id, title: id === "all" ? "সব বিষয় (বান্ডেল)" : subjName(id), price: Math.max(0, +$("#sPrice").value || 0), days: Math.max(1, parseInt($("#sDays").value, 10) || 365), order: SUBJECTS.findIndex((x) => x.id === id) }, { merge: true });
+    state.books = null; toast("সেভ হয়েছে", "ok"); render();
+  },
   goBook(e, el) { location.hash = "#/book/" + el.dataset.id; },
   manageBook(e, el) { state.adminBook = el.dataset.id; render(); },
   backBooks() { state.adminBook = null; render(); },
   async openChapter(e, el) {
     const b = state.books.find((x) => x.id === el.dataset.book), c = state.chapters.find((x) => x.id === el.dataset.id);
     if (!b || !c) return;
+    const bun = state.books.find((x) => x.id === "all");
     if (!chAccess(c, b)) {
       return openModal(`<div class="center"><div style="font-size:2.4rem">🔒</div><h3 style="margin:8px 0">এই চ্যাপ্টার লক করা</h3>
-        <p class="muted">৳${bn(b.price)} দিয়ে বইটি কিনলে ${bn(b.days)} দিনের জন্য সব চ্যাপ্টার পড়তে পারবেন।</p>
-        <button class="btn primary" data-act="buyBook" data-id="${b.id}" style="margin-top:14px">কিনুন</button></div>`, true);
+        <p class="muted">৳${bn(b.price)} দিয়ে এই বিষয়টি কিনলে ${bn(b.days)} দিনের জন্য সব চ্যাপ্টার পড়তে পারবেন।</p>
+        <div style="margin-top:14px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button class="btn primary" data-act="buyBook" data-id="${b.id}">এই বিষয় কিনুন</button>${bun && bun.price > 0 ? `<button class="btn" data-act="buyBook" data-id="all">সব বিষয় ৳${bn(bun.price)}</button>` : ""}</div></div>`, true);
     }
     try {
       const url = (await getDoc(doc(db, "chapterLinks", c.id))).data()?.url;
@@ -667,10 +602,11 @@ const actions = {
   },
   pendingBook() { toast("আপনার পেমেন্ট যাচাই চলছে, অ্যাডমিন অনুমোদন দিলে পড়তে পারবেন"); },
   buyBook(e, el) {
+    if (!state.user) { location.hash = "#/login"; return; }
     const b = state.books.find((x) => x.id === el.dataset.id);
     if (!b) return;
     openModal(`<div class="modal-head"><h3>${esc(b.title)} — ৳${bn(b.price)}</h3><button class="x" data-act="closeModal">✕</button></div>
-      <p class="muted small">কেনার পর <b>${bn(b.days)} দিন</b> বইয়ের সব চ্যাপ্টার পড়তে পারবেন। নিচের যেকোনো নম্বরে <b>Send Money</b> করুন, তারপর ফর্মটি পূরণ করুন।</p>
+      <p class="muted small">কেনার পর <b>${bn(b.days)} দিন</b> ${b.id === "all" ? "সব বিষয়ের" : "এই বিষয়ের"} সব চ্যাপ্টার পড়তে পারবেন। নিচের যেকোনো নম্বরে <b>Send Money</b> করুন, তারপর ফর্মটি পূরণ করুন।</p>
       <div class="paybox">বিকাশ (Personal): <b>${esc(state.settings.bkash)}</b><br>নগদ (Personal): <b>${esc(state.settings.nagad)}</b></div>
       <form id="payForm" data-book="${esc(b.id)}">
         <label>পেমেন্ট মাধ্যম</label><select id="pMethod"><option>বিকাশ</option><option>নগদ</option></select>
@@ -773,6 +709,9 @@ document.addEventListener("submit", async (e) => {
       toast("যোগ করা হয়েছে", "ok"); render();
     }
     if (f.id === "chapterForm") {
+      const bid = f.dataset.book, bref = doc(db, "books", bid);
+      if (!(await getDoc(bref)).exists()) await setDoc(bref, { subject: bid, title: subjName(bid), price: 100, days: 365, order: SUBJECTS.findIndex((x) => x.id === bid), createdAt: serverTimestamp() });
+      state.books = null;
       const ref = await addDoc(collection(db, "chapters"), { bookId: f.dataset.book, no: parseInt($("#chNo").value, 10) || 1, title: $("#chTitle").value.trim(), free: $("#chFree").checked, createdAt: serverTimestamp() });
       await setDoc(doc(db, "chapterLinks", ref.id), { url: $("#chUrl").value.trim() });
       toast("চ্যাপ্টার যোগ হয়েছে", "ok"); render(); return;
@@ -787,7 +726,7 @@ document.addEventListener("submit", async (e) => {
       const b = state.books.find((x) => x.id === f.dataset.book);
       await addDoc(collection(db, "payments"), {
         uid: state.user.uid, email: state.user.email, name: state.user.displayName || "",
-        kind: "book", bookId: b.id, bookTitle: b.title, planId: "book", planName: "বই: " + b.title, amount: b.price, days: b.days,
+        kind: "book", bookId: b.id, bookTitle: b.title, planId: "book", planName: "PDF: " + b.title, amount: b.price, days: b.days,
         method: $("#pMethod").value, senderNumber: $("#pSender").value.trim(), trxId: $("#pTrx").value.trim(),
         status: "pending", createdAt: serverTimestamp(),
       });
