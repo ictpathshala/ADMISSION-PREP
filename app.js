@@ -54,7 +54,7 @@ const DEFAULT_SETTINGS = {
 
 const state = {
   user: null, isAdmin: false, settings: { ...DEFAULT_SETTINGS }, sub: null,
-  content: null, books: null, purchases: {},
+  content: null, books: null, purchases: {}, chapters: [], adminBook: null,
   adminTab: "overview", subjTab: {}, adminType: "video",
 };
 
@@ -167,6 +167,7 @@ async function render() {
     if (!r) body = homeView();
     else if (r === "login") body = loginView();
     else if (r === "subject") body = await subjectView(p);
+    else if (r === "book") body = await bookView(p);
     else if (r === "pricing") body = await pricingView();
     else if (r === "account") body = await accountView();
     else if (r === "admin") body = await adminView();
@@ -287,14 +288,14 @@ function bookCard(b, pending) {
     : has ? `<span class="badge free">কেনা · ${fmtDate(bookExp(b))} পর্যন্ত</span>`
     : pending ? `<span class="badge pending">যাচাই চলছে</span>`
     : `<span class="badge lock">৳${bn(b.price)} · ${bn(b.days)} দিন</span>`;
-  const act = has ? "openBook" : pending ? "pendingBook" : "buyBook";
+  const act = "goBook";
   return `<div class="card hover book" data-act="${act}" data-id="${b.id}" style="cursor:pointer">
     ${b.cover ? `<img class="book-cover" src="${esc(b.cover)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<div class="book-cover ph"><span>${esc((b.title || "ব")[0])}</span></div>`}
     <div style="margin:12px 0 8px">${badge}</div>
     <h3 style="font-size:1.05rem">${esc(b.title)}</h3>
     ${b.author ? `<div class="muted small">${esc(b.author)}</div>` : ""}
     ${b.desc ? `<p class="muted small" style="margin-top:6px">${esc(b.desc)}</p>` : ""}
-    <button class="btn ${has ? "" : "primary"} sm block" style="margin-top:12px">${has ? "পড়ুন" : pending ? "অপেক্ষা করুন" : "কিনুন ৳" + bn(b.price)}</button>
+    <button class="btn ${has ? "" : "primary"} sm block" style="margin-top:12px">${has ? "পড়ুন" : "চ্যাপ্টার দেখুন"}</button>
   </div>`
 }
 function contentCard(c) {
@@ -312,6 +313,45 @@ function gate(msg) {
   return `<div class="wrap section"><div class="card center" style="max-width:460px;margin:auto">
     <div style="font-size:2.4rem">🔐</div><h3 style="margin:8px 0">${esc(msg)}</h3>
     <a class="btn primary" href="#/login" style="margin-top:10px">লগইন করুন</a></div></div>`;
+}
+
+async function loadChapters(bookId) {
+  const snap = await getDocs(query(collection(db, "chapters"), where("bookId", "==", bookId)));
+  state.chapters = snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (a.no ?? 0) - (b.no ?? 0));
+  return state.chapters;
+}
+const chAccess = (c, b) => bookAccess(b) || !!c.free;
+function chapterRow(c, b) {
+  const ok = chAccess(c, b);
+  return `<div class="chapter ${ok ? "" : "locked"}" data-act="openChapter" data-id="${c.id}" data-book="${b.id}">
+    <span class="ch-no">${c.no ?? ""}</span><span class="ch-title">${esc(c.title)}</span>
+    <span class="badge ${ok ? "free" : "lock"}">${c.free ? "ফ্রি" : ok ? "আনলকড" : "🔒 লক"}</span></div>`;
+}
+async function bookView(id) {
+  if (!state.user) return gate("বই দেখতে লগইন করুন");
+  const [books, chs, pays] = await Promise.all([loadBooks(), loadChapters(id), getDocs(query(collection(db, "payments"), where("uid", "==", state.user.uid)))]);
+  const b = books.find((x) => x.id === id);
+  if (!b) return `<div class="wrap section"><div class="empty">বই পাওয়া যায়নি</div></div>`;
+  const pending = pays.docs.some((d) => { const p = d.data(); return p.kind === "book" && p.bookId === id && p.status === "pending"; });
+  const has = bookAccess(b), paid = b.price > 0;
+  const buy = !paid ? `<span class="badge free">ফ্রি বই</span>`
+    : state.isAdmin ? `<span class="badge lock">৳${bn(b.price)} · ${bn(b.days)} দিন</span>`
+    : has ? `<span class="badge free">আনলকড · ${fmtDate(bookExp(b))} পর্যন্ত</span>`
+    : pending ? `<span class="badge pending">পেমেন্ট যাচাই চলছে</span>`
+    : `<button class="btn primary" data-act="buyBook" data-id="${b.id}">৳${bn(b.price)} দিয়ে ${bn(b.days)} দিনের জন্য কিনুন</button>`;
+  return `<div class="wrap section">
+    <a href="#/subject/${esc(b.subject)}" class="muted small">← ${esc(subjName(b.subject))}</a>
+    <div class="card book-head" style="margin-top:10px">
+      ${b.cover ? `<img class="book-cover" src="${esc(b.cover)}" alt="" referrerpolicy="no-referrer">` : `<div class="book-cover ph"><span>${esc((b.title || "ব")[0])}</span></div>`}
+      <div style="flex:1;min-width:200px"><h2>${esc(b.title)}</h2>
+        ${b.author ? `<div class="muted">${esc(b.author)}</div>` : ""}
+        ${b.desc ? `<p class="muted small" style="margin-top:8px">${esc(b.desc)}</p>` : ""}
+        ${paid && !has ? `<p class="muted small" style="margin-top:8px">প্রথম চ্যাপ্টার ফ্রি। বাকিগুলো পড়তে বইটি কিনুন।</p>` : ""}
+        <div style="margin-top:14px">${buy}</div></div>
+    </div>
+    <h3 style="margin:24px 0 12px">চ্যাপ্টারসমূহ</h3>
+    ${chs.length ? chs.map((c) => chapterRow(c, b)).join("") : `<div class="empty">এই বইয়ে এখনো চ্যাপ্টার যোগ করা হয়নি</div>`}
+  </div>`;
 }
 
 async function pricingView() {
@@ -344,7 +384,7 @@ async function accountView() {
   const snap = await getDocs(query(collection(db, "payments"), where("uid", "==", u.uid)));
   const pays = snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
   const mine = Object.entries(state.purchases).filter(([, v]) => v.expiresAt?.toMillis() > Date.now());
-  const myBooksHtml = mine.length ? `<h2 style="margin:28px 0 12px">আমার বই</h2><div class="table-wrap"><table><thead><tr><th>বই</th><th>মেয়াদ</th></tr></thead><tbody>${mine.map(([, v]) => `<tr><td>${esc(v.title)}</td><td>${fmtDate(v.expiresAt)} পর্যন্ত</td></tr>`).join("")}</tbody></table></div>` : "";
+  const myBooksHtml = mine.length ? `<h2 style="margin:28px 0 12px">আমার বই</h2><div class="table-wrap"><table><thead><tr><th>বই</th><th>মেয়াদ</th></tr></thead><tbody>${mine.map(([bid, v]) => `<tr><td><a href="#/book/${esc(bid)}" style="color:var(--gold)">${esc(v.title)}</a></td><td>${fmtDate(v.expiresAt)} পর্যন্ত</td></tr>`).join("")}</tbody></table></div>` : "";
   return `<div class="wrap section">
     <div class="card" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
       ${u.photoURL ? `<img class="avatar" style="width:60px;height:60px" src="${esc(u.photoURL)}" alt="">` : `<div class="logo" style="width:60px;height:60px">${esc((u.displayName || u.email)[0].toUpperCase())}</div>`}
@@ -431,23 +471,45 @@ async function adminContent() {
 }
 async function adminBooks() {
   const all = await loadBooks(true);
+  if (state.adminBook) {
+    const bk = all.find((x) => x.id === state.adminBook);
+    if (bk) return await adminChapters(bk);
+    state.adminBook = null;
+  }
   return `<div class="card" style="margin-bottom:18px"><h3>নতুন বই যোগ করুন</h3>
-    <p class="muted small" style="margin:4px 0 8px">বইয়ের PDF Google Drive-এ আপলোড করে (Share → Anyone with the link → Viewer) লিংক এখানে দিন। দাম ৳0 দিলে বইটি ফ্রি হবে। কেনার পর ক্রেতা কত দিন পড়তে পারবে সেটা "মেয়াদ" দিয়ে ঠিক করুন।</p>
+    <p class="muted small" style="margin:4px 0 8px">আগে বইটি তৈরি করুন (দাম আর মেয়াদ সহ), তারপর তালিকা থেকে "চ্যাপ্টার" বাটনে চেপে চ্যাপ্টার যোগ করুন। প্রথম চ্যাপ্টার ফ্রি রাখলে বাকিগুলো কিনলে তবেই খুলবে। দাম ৳0 দিলে পুরো বই ফ্রি হবে।</p>
     <form id="bookForm">
       <div class="row"><div><label>বিষয়</label><select id="bSubject">${SUBJECTS.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("")}</select></div>
         <div><label>বইয়ের নাম</label><input id="bTitle" required></div></div>
       <div class="row"><div><label>লেখক (ঐচ্ছিক)</label><input id="bAuthor"></div>
         <div><label>কভার ছবির লিংক (ঐচ্ছিক)</label><input id="bCover" type="url" placeholder="https://..."></div></div>
-      <label>বইয়ের ফাইল লিংক (Drive PDF)</label><input id="bUrl" type="url" required placeholder="https://drive.google.com/...">
       <label>সংক্ষিপ্ত বিবরণ (ঐচ্ছিক)</label><input id="bDesc">
-      <div class="row" style="align-items:end"><div><label>দাম (৳)</label><input id="bPrice" type="number" min="0" required value="0"></div>
+      <div class="row" style="align-items:end"><div><label>পুরো বইয়ের দাম (৳)</label><input id="bPrice" type="number" min="0" required value="100"></div>
         <div><label>পড়ার মেয়াদ (দিন)</label><input id="bDays" type="number" min="1" max="3650" required value="365"></div>
-        <div><button class="btn primary block">যোগ করুন</button></div></div>
+        <div><button class="btn primary block">বই তৈরি করুন</button></div></div>
     </form></div>
   ${all.length ? `<div class="table-wrap"><table><thead><tr><th>বিষয়</th><th>বই</th><th>দাম</th><th>মেয়াদ</th><th></th></tr></thead><tbody>
     ${all.map((b) => `<tr><td>${esc(subjName(b.subject))}</td><td>${esc(b.title)}</td><td>${b.price > 0 ? "৳" + bn(b.price) : "ফ্রি"}</td><td>${bn(b.days)} দিন</td>
-      <td style="white-space:nowrap"><button class="btn sm" data-act="editBook" data-id="${b.id}">দাম/মেয়াদ</button> <button class="btn bad sm" data-act="delBook" data-id="${b.id}">মুছুন</button></td></tr>`).join("")}
+      <td style="white-space:nowrap"><button class="btn ok sm" data-act="manageBook" data-id="${b.id}">চ্যাপ্টার</button> <button class="btn sm" data-act="editBook" data-id="${b.id}">দাম/মেয়াদ</button> <button class="btn bad sm" data-act="delBook" data-id="${b.id}">মুছুন</button></td></tr>`).join("")}
     </tbody></table></div>` : `<div class="empty">কোনো বই নেই</div>`}`;
+}
+async function adminChapters(b) {
+  const chs = await loadChapters(b.id);
+  const next = chs.length ? Math.max(...chs.map((c) => c.no || 0)) + 1 : 1;
+  return `<button class="btn sm" data-act="backBooks" style="margin-bottom:14px">← বইয়ের তালিকা</button>
+  <div class="card" style="margin-bottom:18px"><h3>${esc(b.title)} — নতুন চ্যাপ্টার</h3>
+    <p class="muted small" style="margin:4px 0 8px">চ্যাপ্টারের PDF Google Drive-এ আপলোড করে (Anyone with the link → Viewer) লিংক দিন।</p>
+    <form id="chapterForm" data-book="${b.id}">
+      <div class="row"><div style="flex:0 0 110px;min-width:110px"><label>ক্রম নং</label><input id="chNo" type="number" min="1" required value="${next}"></div>
+        <div><label>চ্যাপ্টারের নাম</label><input id="chTitle" required placeholder="যেমন: ব্যাংকের ধারণা"></div></div>
+      <label>ফাইল লিংক (Drive PDF)</label><input id="chUrl" type="url" required placeholder="https://drive.google.com/...">
+      <div class="row" style="align-items:end"><div class="switch" style="padding-top:12px"><input type="checkbox" id="chFree" ${next === 1 ? "checked" : ""}><span>ফ্রি চ্যাপ্টার (কেনা ছাড়াই পড়া যাবে)</span></div>
+        <div><button class="btn primary block">যোগ করুন</button></div></div>
+    </form></div>
+  ${chs.length ? `<div class="table-wrap"><table><thead><tr><th>ক্রম</th><th>চ্যাপ্টার</th><th>ফ্রি</th><th></th></tr></thead><tbody>
+    ${chs.map((c) => `<tr><td>${c.no ?? ""}</td><td>${esc(c.title)}</td><td>${c.free ? "✔" : "—"}</td>
+      <td style="white-space:nowrap"><button class="btn sm" data-act="chToggleFree" data-id="${c.id}">${c.free ? "লক করুন" : "ফ্রি করুন"}</button> <button class="btn sm" data-act="chNo" data-id="${c.id}">ক্রম</button> <button class="btn bad sm" data-act="chDel" data-id="${c.id}">মুছুন</button></td></tr>`).join("")}
+    </tbody></table></div>` : `<div class="empty">এই বইয়ে এখনো চ্যাপ্টার নেই</div>`}`;
 }
 function adminSettings() {
   const s = state.settings;
@@ -574,12 +636,46 @@ const actions = {
     await setDoc(doc(db, "payments", el.dataset.id), { status: "rejected", reviewedAt: serverTimestamp() }, { merge: true });
     toast("বাতিল করা হয়েছে"); render();
   },
+  goBook(e, el) { location.hash = "#/book/" + el.dataset.id; },
+  manageBook(e, el) { state.adminBook = el.dataset.id; render(); },
+  backBooks() { state.adminBook = null; render(); },
+  async openChapter(e, el) {
+    const b = state.books.find((x) => x.id === el.dataset.book), c = state.chapters.find((x) => x.id === el.dataset.id);
+    if (!b || !c) return;
+    if (!chAccess(c, b)) {
+      return openModal(`<div class="center"><div style="font-size:2.4rem">🔒</div><h3 style="margin:8px 0">এই চ্যাপ্টার লক করা</h3>
+        <p class="muted">৳${bn(b.price)} দিয়ে বইটি কিনলে ${bn(b.days)} দিনের জন্য সব চ্যাপ্টার পড়তে পারবেন।</p>
+        <button class="btn primary" data-act="buyBook" data-id="${b.id}" style="margin-top:14px">কিনুন</button></div>`, true);
+    }
+    try {
+      const url = (await getDoc(doc(db, "chapterLinks", c.id))).data()?.url;
+      const embed = url && toEmbed(url, "pdf");
+      openModal(`<div class="modal-head"><h3>${c.no ?? ""}. ${esc(c.title)}</h3><button class="x" data-act="closeModal">✕</button></div>
+        ${embed ? `<div class="frame tall"><iframe src="${esc(embed)}" allowfullscreen referrerpolicy="no-referrer"></iframe></div>` : `<div class="empty">চ্যাপ্টারের লিংক পাওয়া যায়নি</div>`}
+        ${url ? `<div style="margin-top:12px"><a class="btn sm" href="${esc(url)}" target="_blank" rel="noopener">নতুন ট্যাবে খুলুন ↗</a></div>` : ""}`);
+    } catch { openModal(`<div class="center"><div style="font-size:2.4rem">🔒</div><h3>এই চ্যাপ্টার পড়ার অনুমতি নেই</h3><p class="muted">বইটি কিনলে পড়তে পারবেন।</p></div>`, true); }
+  },
+  async chToggleFree(e, el) {
+    const c = state.chapters.find((x) => x.id === el.dataset.id);
+    await setDoc(doc(db, "chapters", c.id), { free: !c.free }, { merge: true }); render();
+  },
+  async chNo(e, el) {
+    const c = state.chapters.find((x) => x.id === el.dataset.id);
+    const n = parseInt(prompt("নতুন ক্রম নং", c.no), 10);
+    if (!n || n < 1) return;
+    await setDoc(doc(db, "chapters", c.id), { no: n }, { merge: true }); render();
+  },
+  async chDel(e, el) {
+    if (!confirm("চ্যাপ্টারটি মুছে ফেলবেন?")) return;
+    await deleteDoc(doc(db, "chapters", el.dataset.id)); await deleteDoc(doc(db, "chapterLinks", el.dataset.id));
+    toast("মুছে ফেলা হয়েছে"); render();
+  },
   pendingBook() { toast("আপনার পেমেন্ট যাচাই চলছে, অ্যাডমিন অনুমোদন দিলে পড়তে পারবেন"); },
   buyBook(e, el) {
     const b = state.books.find((x) => x.id === el.dataset.id);
     if (!b) return;
     openModal(`<div class="modal-head"><h3>${esc(b.title)} — ৳${bn(b.price)}</h3><button class="x" data-act="closeModal">✕</button></div>
-      <p class="muted small">কেনার পর <b>${bn(b.days)} দিন</b> পড়তে পারবেন। নিচের যেকোনো নম্বরে <b>Send Money</b> করুন, তারপর ফর্মটি পূরণ করুন।</p>
+      <p class="muted small">কেনার পর <b>${bn(b.days)} দিন</b> বইয়ের সব চ্যাপ্টার পড়তে পারবেন। নিচের যেকোনো নম্বরে <b>Send Money</b> করুন, তারপর ফর্মটি পূরণ করুন।</p>
       <div class="paybox">বিকাশ (Personal): <b>${esc(state.settings.bkash)}</b><br>নগদ (Personal): <b>${esc(state.settings.nagad)}</b></div>
       <form id="payForm" data-book="${esc(b.id)}">
         <label>পেমেন্ট মাধ্যম</label><select id="pMethod"><option>বিকাশ</option><option>নগদ</option></select>
@@ -612,10 +708,12 @@ const actions = {
   },
   async delBook(e, el) {
     if (!confirm("বইটি মুছে ফেলবেন?")) return;
+    const cs = await getDocs(query(collection(db, "chapters"), where("bookId", "==", el.dataset.id)));
+    for (const c of cs.docs) { await deleteDoc(doc(db, "chapterLinks", c.id)); await deleteDoc(c.ref); }
     await deleteDoc(doc(db, "books", el.dataset.id)); await deleteDoc(doc(db, "bookLinks", el.dataset.id));
     toast("মুছে ফেলা হয়েছে"); render();
   },
-  adminTab(e, el) { state.adminTab = el.dataset.tab; render(); },
+  adminTab(e, el) { state.adminTab = el.dataset.tab; state.adminBook = null; render(); },
   adminType(e, el) { state.adminType = el.dataset.type; render(); },
   async delContent(e, el) {
     if (!confirm("মুছে ফেলবেন?")) return;
@@ -679,12 +777,16 @@ document.addEventListener("submit", async (e) => {
       await setDoc(doc(db, "links", ref.id), { url: $("#cUrl").value.trim() });
       toast("যোগ করা হয়েছে", "ok"); render();
     }
+    if (f.id === "chapterForm") {
+      const ref = await addDoc(collection(db, "chapters"), { bookId: f.dataset.book, no: parseInt($("#chNo").value, 10) || 1, title: $("#chTitle").value.trim(), free: $("#chFree").checked, createdAt: serverTimestamp() });
+      await setDoc(doc(db, "chapterLinks", ref.id), { url: $("#chUrl").value.trim() });
+      toast("চ্যাপ্টার যোগ হয়েছে", "ok"); render(); return;
+    }
     if (f.id === "bookForm") {
       const data = { subject: $("#bSubject").value, title: $("#bTitle").value.trim(), author: $("#bAuthor").value.trim(), desc: $("#bDesc").value.trim(), cover: $("#bCover").value.trim(),
         price: Math.max(0, +$("#bPrice").value || 0), days: Math.max(1, parseInt($("#bDays").value, 10) || 365), createdAt: serverTimestamp(), order: Date.now() };
-      const ref = await addDoc(collection(db, "books"), data);
-      await setDoc(doc(db, "bookLinks", ref.id), { url: $("#bUrl").value.trim() });
-      toast("বই যোগ করা হয়েছে", "ok"); render(); return;
+      await addDoc(collection(db, "books"), data);
+      toast("বই তৈরি হয়েছে — এবার \"চ্যাপ্টার\" বাটনে চেপে চ্যাপ্টার যোগ করুন", "ok"); render(); return;
     }
     if (f.id === "payForm" && f.dataset.book) {
       const b = state.books.find((x) => x.id === f.dataset.book);

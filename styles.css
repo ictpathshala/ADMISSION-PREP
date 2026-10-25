@@ -223,3 +223,13 @@ body.on-login #bgfx { opacity: 1; }
 .book { padding: 14px; }
 .book-cover { display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 12px; border: 1px solid var(--line); background: var(--card-hover); }
 .book-cover.ph { display: grid; place-items: center; font-size: 3rem; font-weight: 700; color: var(--gold); background: linear-gradient(160deg, rgba(229, 189, 99, .14), rgba(255, 255, 255, .03)); }
+
+/* ---------- Chapters ---------- */
+.book-head { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+.book-head .book-cover { width: 130px; flex: none; }
+.chapter { display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); cursor: pointer; transition: border-color .2s, background .2s; }
+.chapter:hover { border-color: rgba(229, 189, 99, .55); background: var(--card-hover); }
+.chapter.locked .ch-title { color: var(--muted); }
+.ch-no { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: rgba(229, 189, 99, .1); color: var(--gold); font-weight: 600; flex: none; }
+.ch-title { flex: 1; font-weight: 500; }
+@media (max-width: 700px) { .book-head .book-cover { width: 100px; } }
